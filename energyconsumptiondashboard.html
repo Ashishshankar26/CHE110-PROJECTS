@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Energy Management Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-color: #10d9c1;
+            --background-color: #f0f2f5;
+            --card-background: white;
+            --text-color: #333;
+        }
+
+        .dark-mode {
+            --primary-color: #0dd9c1;
+            --background-color: #1a1a1a;
+            --card-background: #2d2d2d;
+            --text-color: #ffffff;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .dashboard {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: rgba(0,0,0,0.05);
+            border-radius: 5px;
+        }
+
+        .building-selector {
+            display: flex;
+            gap: 10px;
+        }
+
+        .building-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .building-btn.active {
+            background-color: #11b058;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background-color: rgba(0,0,0,0.05);
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .alert {
+            color: #ff4444;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .chart-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .settings-panel {
+            background-color: rgba(0,0,0,0.05);
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+
+        .button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: var(--primary-color);
+            color: white;
+            margin: 5px;
+        }
+
+        .comparison-chart {
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <h1 style="text-align: center;">Advanced Energy Management Dashboard</h1>
+        
+        <div class="controls">
+            <div class="building-selector">
+                <button class="building-btn active" onclick="selectBuilding(1)">Building 1</button>
+                <button class="building-btn" onclick="selectBuilding(2)">Building 2</button>
+                <button class="building-btn" onclick="selectBuilding(3)">Building 3</button>
+                <button class="building-btn" onclick="selectBuilding(4)">Building 4</button>
+                <button class="building-btn" onclick="selectBuilding(5)">Building 5</button>
+            </div>
+            <div>
+                <button class="button" onclick="toggleTheme()">Toggle Theme</button>
+                <button class="button" onclick="exportData()">Export Data</button>
+                <button class="button" onclick="toggleComparison()">Compare Buildings</button>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Current Usage</h3>
+                <div id="currentUsage">0 kWh</div>
+                <div id="currentCost">$0</div>
+            </div>
+            <!-- Continuing the HTML part -->
+            <div class="stat-card">
+                <h3>Daily Average</h3>
+                <div id="dailyAverage">0 kWh</div>
+            </div>
+            <div class="stat-card">
+                <h3>Peak Usage</h3>
+                <div id="peakUsage">0 kWh</div>
+            </div>
+            <div class="stat-card">
+                <h3>Efficiency Score</h3>
+                <div id="efficiencyScore">0</div>
+            </div>
+        </div>
+
+        <div id="alert" class="alert"></div>
+
+        <div class="settings-panel">
+            <h3>Settings</h3>
+            <div>
+                Alert Threshold: 
+                <input type="range" id="alertThreshold" min="50" max="200" value="150" 
+                       onchange="updateAlertThreshold(this.value)">
+                <span id="thresholdValue">150 kWh</span>
+            </div>
+            <div>
+                Rate per kWh: 
+                <input type="number" id="ratePerKWh" value="0.12" step="0.01" 
+                       onchange="updateRate(this.value)">
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="energyChart"></canvas>
+            <canvas id="comparisonChart" class="comparison-chart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let isDarkMode = false;
+        let alertThreshold = 150;
+        let ratePerKWh = 0.12;
+        let comparisonMode = false;
+        let currentBuilding = 1;
+        let mainChart, comparisonChart;
+
+        // Building data structure
+        const buildings = {
+            1: { data: [], average: 0, peak: 0, efficiency: 0 },
+            2: { data: [], average: 0, peak: 0, efficiency: 0 },
+            3: { data: [], average: 0, peak: 0, efficiency: 0 },
+            4: { data: [], average: 0, peak: 0, efficiency: 0 },
+            5: { data: [], average: 0, peak: 0, efficiency: 0 }
+        };
+
+        // Initialize the dashboard
+        function initializeDashboard() {
+            initCharts();
+            startDataSimulation();
+            updateUI();
+        }
+
+        // Initialize charts
+        function initCharts() {
+            const ctx = document.getElementById('energyChart').getContext('2d');
+            mainChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Energy Usage (kWh)',
+                        data: [],
+                        borderColor: '#4CAF50',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            const compCtx = document.getElementById('comparisonChart').getContext('2d');
+            comparisonChart = new Chart(compCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Building 1', 'Building 2', 'Building 3', 'Building 4', 'Building 5'],
+                    datasets: [{
+                        label: 'Average Energy Usage (kWh)',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: '#4CAF50'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Simulate real-time data
+        function startDataSimulation() {
+            setInterval(() => {
+                for (let building in buildings) {
+                    const usage = Math.random() * 200;
+                    buildings[building].data.push(usage);
+                    if (buildings[building].data.length > 20) {
+                        buildings[building].data.shift();
+                    }
+                    updateBuildingStats(building);
+                }
+                updateUI();
+            }, 2000);
+        }
+
+        // Update building statistics
+        function updateBuildingStats(building) {
+            const buildingData = buildings[building].data;
+            buildings[building].average = buildingData.reduce((a, b) => a + b, 0) / buildingData.length;
+            buildings[building].peak = Math.max(...buildingData);
+            buildings[building].efficiency = calculateEfficiency(buildingData[buildingData.length - 1], buildings[building].average);
+        }
+
+        // Update UI elements
+        function updateUI() {
+            const currentData = buildings[currentBuilding];
+            const currentUsage = currentData.data[currentData.data.length - 1] || 0;
+
+            document.getElementById('currentUsage').textContent = `${currentUsage.toFixed(2)} kWh`;
+            document.getElementById('currentCost').textContent = `$${calculateCost(currentUsage)}`;
+            document.getElementById('dailyAverage').textContent = `${currentData.average.toFixed(2)} kWh`;
+            document.getElementById('peakUsage').textContent = `${currentData.peak.toFixed(2)} kWh`;
+            document.getElementById('efficiencyScore').textContent = `${currentData.efficiency}%`;
+
+            updateCharts();
+            checkAlerts(currentUsage);
+        }
+
+        // Update charts
+        function updateCharts() {
+            // Update main chart
+            mainChart.data.labels = Array.from({length: buildings[currentBuilding].data.length}, (_, i) => i + 1);
+            mainChart.data.datasets[0].data = buildings[currentBuilding].data;
+            mainChart.update();
+
+            // Update comparison chart
+            if (comparisonMode) {
+                comparisonChart.data.datasets[0].data = Object.values(buildings).map(b => b.average);
+                comparisonChart.update();
+            }
+        }
+
+        // Building selection
+        function selectBuilding(building) {
+            currentBuilding = building;
+            document.querySelectorAll('.building-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[onclick="selectBuilding(${building})"]`).classList.add('active');
+            updateUI();
+        }
+
+        // Theme toggle
+        function toggleTheme() {
+            isDarkMode = !isDarkMode;
+            document.body.classList.toggle('dark-mode');
+        }
+
+        // Export data
+        function exportData() {
+            const buildingData = buildings[currentBuilding];
+            const csvContent = "data:text/csv;charset=utf-8," + buildingData.data.join("\n");
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `building${currentBuilding}_data.csv`);
+            document.body.appendChild(link);
+            link.click();
+        }
+
+        // Toggle comparison view
+        function toggleComparison() {
+            comparisonMode = !comparisonMode;
+            document.getElementById('comparisonChart').style.display = comparisonMode ? 'block' : 'none';
+            if (comparisonMode) {
+                updateCharts();
+            }
+        }
+
+        // Update alert threshold
+        function updateAlertThreshold(value) {
+            alertThreshold = parseInt(value);
+            document.getElementById('thresholdValue').textContent = `${value} kWh`;
+        }
+
+        // Update rate
+        function updateRate(value) {
+            ratePerKWh = parseFloat(value);
+        }
+
+        // Calculate cost
+        function calculateCost(usage) {
+            return (usage * ratePerKWh).toFixed(2);
+        }
+        // Calculate efficiency
+        function calculateEfficiency(usage, average) {
+            if (average === 0) return 100;
+            return Math.round((1 - Math.abs(usage - average) / average) * 100);
+        }
+
+        // Check for alerts
+        function checkAlerts(currentUsage) {
+            const alertElement = document.getElementById('alert');
+            if (currentUsage > alertThreshold) {
+                alertElement.textContent = `⚠️ Alert: Current usage (${currentUsage.toFixed(2)} kWh) exceeds threshold (${alertThreshold} kWh)`;
+                alertElement.style.display = 'block';
+            } else {
+                alertElement.style.display = 'none';
+            }
+        }
+
+        // Helper function to generate random color
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        // Update chart themes based on dark mode
+        function updateChartTheme() {
+            const textColor = isDarkMode ? '#ffffff' : '#666666';
+            
+            const chartOptions = {
+                scales: {
+                    x: {
+                        ticks: { color: textColor },
+                        grid: { color: isDarkMode ? '#444444' : '#dddddd' }
+                    },
+                    y: {
+                        ticks: { color: textColor },
+                        grid: { color: isDarkMode ? '#444444' : '#dddddd' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: textColor }
+                    }
+                }
+            };
+
+            mainChart.options = { ...mainChart.options, ...chartOptions };
+            comparisonChart.options = { ...comparisonChart.options, ...chartOptions };
+            
+            mainChart.update();
+            comparisonChart.update();
+        }
+
+        // Add event listeners for responsive design
+        window.addEventListener('resize', () => {
+            mainChart.resize();
+            comparisonChart.resize();
+        });
+
+        // Error handling function
+        function handleError(error) {
+            console.error('Error in dashboard:', error);
+            const alertElement = document.getElementById('alert');
+            alertElement.textContent = 'An error occurred. Please try again later.';
+            alertElement.style.display = 'block';
+        }
+
+        // Data validation function
+        function validateData(data) {
+            return !isNaN(data) && isFinite(data) && data >= 0;
+        }
+
+        // Initialize dashboard when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                initializeDashboard();
+            } catch (error) {
+                handleError(error);
+            }
+        });
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', (event) => {
+            if (event.ctrlKey || event.metaKey) {
+                switch(event.key) {
+                    case 'd':
+                        event.preventDefault();
+                        toggleTheme();
+                        break;
+                    case 'e':
+                        event.preventDefault();
+                        exportData();
+                        break;
+                    case 'c':
+                        event.preventDefault();
+                        toggleComparison();
+                        break;
+                }
+            }
+        });
+
+        // Add touch support for mobile devices
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        document.addEventListener('touchstart', (event) => {
+            touchStartX = event.changedTouches[0].screenX;
+        });
+
+        document.addEventListener('touchend', (event) => {
+            touchEndX = event.changedTouches[0].screenX;
+            handleSwipe();
+        });
+
+        function handleSwipe() {
+            const swipeThreshold = 50;
+            const difference = touchStartX - touchEndX;
+
+            if (Math.abs(difference) > swipeThreshold) {
+                if (difference > 0 && currentBuilding < 5) {
+                    // Swipe left - next building
+                    selectBuilding(currentBuilding + 1);
+                } else if (difference < 0 && currentBuilding > 1) {
+                    // Swipe right - previous building
+                    selectBuilding(currentBuilding - 1);
+                }
+            }
+        }
+
+        // Add local storage support for user preferences
+        function savePreferences() {
+            const preferences = {
+                isDarkMode,
+                alertThreshold,
+                ratePerKWh,
+                currentBuilding
+            };
+            localStorage.setItem('dashboardPreferences', JSON.stringify(preferences));
+        }
+
+        function loadPreferences() {
+            const savedPreferences = localStorage.getItem('dashboardPreferences');
+            if (savedPreferences) {
+                const preferences = JSON.parse(savedPreferences);
+                isDarkMode = preferences.isDarkMode;
+                alertThreshold = preferences.alertThreshold;
+                ratePerKWh = preferences.ratePerKWh;
+                currentBuilding = preferences.currentBuilding;
+
+                // Apply loaded preferences
+                if (isDarkMode) document.body.classList.add('dark-mode');
+                document.getElementById('alertThreshold').value = alertThreshold;
+                document.getElementById('ratePerKWh').value = ratePerKWh;
+                selectBuilding(currentBuilding);
+            }
+        }
+
+        // Save preferences when changes are made
+        window.addEventListener('beforeunload', savePreferences);
+
+        // Load preferences when page loads
+        loadPreferences();
+    </script>
+</body>
+</html>
